@@ -1,9 +1,9 @@
 import dotenv from 'dotenv'
 import fetch from "node-fetch";
 import querystring from 'querystring';
-import { editEnvFile } from './utils.js';
+import {editEnvFile} from './utils.js';
 import dayjs from 'dayjs';
-import { getToken } from './utils.js';
+import {getToken} from './utils.js';
 
 dotenv.config()
 
@@ -30,9 +30,10 @@ class MainApi {
       })
     })
     .then((res) => {
-      return _getRequestResult(res);
+      return res.json();
     })
     .then((res) => {
+      console.log(res);
       editEnvFile(res.access_token);
     })
   }
@@ -59,7 +60,7 @@ class MainApi {
     // добавление query к url
     const data = {
       timeMin: day.toISOString(),
-      timeMax: day.add(3, "day").toISOString(),
+      timeMax: day.add(2, "day").toISOString(),
       maxResults: 20,
       singleEvents: true,
       orderBy: "startTime",
@@ -75,9 +76,6 @@ class MainApi {
       headers: {
         Authorization: `Bearer ${getToken().replace(/\r?\n|\r/g, '')}`,
       },
-    })
-    .then((res) => {
-      return _getRequestResult(res);
     })
   }
 
@@ -96,9 +94,10 @@ class MainApi {
       })
       })
       .then((res) => {
-        return _getRequestResult(res);
+        return res.json();
       })
       .then((res) => {
+        console.log(res);
         editEnvFile(res.access_token);
       })
       .catch((err) => {
