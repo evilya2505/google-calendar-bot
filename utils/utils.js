@@ -2,6 +2,17 @@ import fs from 'fs';
 import * as envfile from 'envfile';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween.js';
+import customParseFormat from 'dayjs/plugin/customParseFormat.js';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js';
+import localeData from 'dayjs/plugin/localeData.js';
+import 'dayjs/locale/ru.js';
+
+dayjs.extend(localeData)
+dayjs.locale('ru') // use locale globally
+dayjs().locale('ru').format() // use locale in a specific instance
+
+dayjs.extend(customParseFormat);
 dayjs.extend(isBetween);
 
 const sourcePath = 'token.txt'
@@ -99,5 +110,152 @@ function sortEvents(res) {
   }
 }
 
+function returnWorkersFromDate(date, data) {
+  const nextDay = date.set('day', date.day() + 1).set('hour', 2).set('minute', 59).set('second', 59);
+  date = date.set('hour', 3).set('minute', 0).set('second', 0);
+  let compatibleWorkers = [];
+  let resString = '';
 
-export {editEnvFile, getToken, returnRes};
+  if (data?.items?.length > 0) {
+    for (let i = 0; i < data.items.length; i++) {
+      try {
+        if (dayjs(data.items[i]?.start?.dateTime).isBetween(date, nextDay) || dayjs(data.items[i]?.end?.dateTime).isBetween(date, nextDay)) {
+          compatibleWorkers.push({ name: data.items[i].summary, start: data.items[i]?.start?.dateTime,end: data.items[i]?.end?.dateTime });
+        }
+      } catch (e) {
+        console.log(e);
+      }
+    }
+  }
+
+  if (compatibleWorkers.length == 0) {
+    resString = 'Ничего не найдено.'
+  } else {
+    for (let i = 0; i < compatibleWorkers.length; i++) {
+      resString += `${dayjs(compatibleWorkers[i].start).format('DD.MM HH:mm')} - ${dayjs(compatibleWorkers[i].end).format('DD.MM HH:mm')}   ${compatibleWorkers[i].name}\n`;
+    }
+
+    resString = `${dayjs(date).format('DD.MM.YY')} в смене:\n\n${resString}`;
+  }
+
+  return resString;
+}
+
+function joinWorkersOnTheSameDate(resArr) {
+  let newArr = [];
+  let temp = [];
+  resArr.map((item, index, array) => {
+      if (temp.length > 0 && (item.substr(0,22) == temp[0].substr(0,22))) {
+          temp.push(item);
+      } else {
+          temp.map((item, index, array) => {
+              if (index != 0) {
+                  array[index] = array[index].slice(22, array[index].length).trim();
+              }
+          });
+
+          if (temp.length > 0) newArr.push(temp.join(', ') + '\n');
+
+          temp = [item];
+      }
+
+      if (index == resArr.length - 1) {
+          temp.map((item, index, array) => {
+              if (index != 0) {
+                  array[index] = array[index].slice(22, array[index].length).trim();
+              }
+          });
+
+          newArr.push(temp.join(', ') + '\n');
+      }
+  });
+
+  return newArr;
+}
+
+// формирует сообщение для отправки
+function formMessage(resArr) {
+  let resStringsArr = [];
+  let resString = '';
+  let amountOfSymbs = 0;
+  let newArr = joinWorkersOnTheSameDate(resArr);
+  const MAX_SYMBS = 4096;
+
+  if (newArr.join('').length < 4096) {
+    for (let i = 0; i < newArr.length; i++) {
+      resString += newArr[i];
+    }
+    resStringsArr.push(resString);
+  } else {
+    for (let i = 0; i < newArr.length; i++) {
+      amountOfSymbs += newArr[i].length;
+
+      if (amountOfSymbs >= MAX_SYMBS) {
+        resStringsArr.push(resString);
+        resString = newArr[i];
+        amountOfSymbs = newArr[i].length;
+      } else {
+        resString += newArr[i];
+      }
+    }
+  }
+
+  return resStringsArr;
+}
+
+// возвращает события из определенного промежутка времени
+function returnWorkersInSelectedDate(data) {
+  const sortedEvents = sortEvents(data);
+  let resArr = [];
+  for (let i = 0; i < sortedEvents.length; i++) {
+    resArr.push(`${dayjs(sortedEvents[i]?.start?.dateTime).format('DD.MM.YYYY HH:mm')}-${dayjs(sortedEvents[i]?.end?.dateTime).format('HH:mm')}   ${sortedEvents[i].summary}`);
+    //console.log(`${dayjs(sortedEvents[i]?.start?.dateTime).format('DD.MM HH:mm')} - ${dayjs(sortedEvents[i]?.end?.dateTime).format('DD.MM HH:mm')}   ${sortedEvents[i].summary}`);
+  }
+
+  return formMessage(resArr);
+}
+
+// === work with data ===
+function convertFromJson(data) {
+  return JSON.parse(data);
+}
+
+function saveJson(data, isTable) {
+  fs.writeFileSync(isTable ? "./data/usersfortable.json" : "./data/users.json", JSON.stringify(data));
+}
+
+function readWorkersFromJson() {
+  const workersData = fs.readFileSync("./data/workers.json", "utf8");
+
+  return convertFromJson(workersData);
+}
+
+function readUsersQueueFromJson(isTable) {
+  const usersData = fs.readFileSync(isTable ? "./data/usersfortable.json" : "./data/users.json", "utf8");
+
+  return convertFromJson(usersData);
+}
+
+function addUser(user, isTable) {
+  const usersData = readUsersQueueFromJson(isTable);
+
+  usersData.push(user);
+
+  saveJson(usersData, isTable);
+}
+
+function deleteUser(chatId, isTable) {
+  const usersData = readUsersQueueFromJson(isTable);
+  let usersDataEdited = [];
+
+  for (let i = 0; i < usersData.length; i++) {
+    if (usersData[i].chatId != chatId) {
+      usersDataEdited.push(usersData[i]);
+    }
+  }
+
+  saveJson(usersDataEdited, isTable);
+}
+
+
+export {editEnvFile, getToken, returnRes, readWorkersFromJson, readUsersQueueFromJson, addUser, deleteUser, returnWorkersFromDate, returnWorkersInSelectedDate};

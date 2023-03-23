@@ -38,7 +38,15 @@ class MainApi {
     })
   }
 
-  getInfo(num) {
+  checkToken() {
+    return fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${getToken().replace(/\r?\n|\r/g, '')}`, {
+      method: 'GET',
+    })
+    .then(this._getRequestResult)
+  }
+
+  getInfo(num, date, endDate) {
+    console.log("enddate", endDate);
     let calendarId;
 
     switch (num) {
@@ -56,12 +64,24 @@ class MainApi {
         break;
     }
 
-    const day = dayjs();
+    let day;
+    let endDay;
+
+    if (!date) {
+      day = dayjs();
+    } else {
+      day = date;
+    }
+
+    if (!endDate) {
+      endDay = day.add(2, "day");
+    } else {
+      endDay = endDate;
+    }
     // добавление query к url
     const data = {
       timeMin: day.toISOString(),
-      timeMax: day.add(2, "day").toISOString(),
-      maxResults: 20,
+      timeMax: endDay.toISOString(),
       singleEvents: true,
       orderBy: "startTime",
     };
